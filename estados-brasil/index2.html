@@ -1,0 +1,604 @@
+
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Brasil | Estados, Municípios e Ruas</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topo">
+    <div class="conteudo">
+        <span class="etiqueta">EXPLORADOR GEOGRÁFICO</span>
+        <h1>Descubra o Brasil 🇧🇷</h1>
+        <p>Consulte estados, municípios e endereços em um só lugar.</p>
+    </div>
+</header>
+
+<main class="conteudo">
+
+    <section class="painel">
+        <h2>Estados e municípios</h2>
+
+        <p class="descricao">
+            Escolha um estado para carregar seus municípios.
+        </p>
+
+        <label for="estado">Estado brasileiro</label>
+
+        <select id="estado">
+            <option value="">Carregando estados...</option>
+        </select>
+
+        <div class="resumo" id="resumo" role="status">
+            Carregando dados do IBGE...
+        </div>
+
+        <label for="pesquisaMunicipio">Pesquisar município</label>
+
+        <input
+            id="pesquisaMunicipio"
+            type="search"
+            placeholder="Digite o nome do município..."
+            disabled
+        >
+
+        <div id="municipios" class="grade"></div>
+    </section>
+
+    <section class="painel">
+        <h2>Pesquisar ruas</h2>
+
+        <p class="descricao">
+            Informe a cidade, o estado e o nome da rua.
+        </p>
+
+        <form id="formRua">
+            <div class="campos">
+                <div>
+                    <label for="cidadeRua">Município</label>
+
+                    <input
+                        id="cidadeRua"
+                        type="text"
+                        placeholder="Ex.: Campinas"
+                        maxlength="100"
+                        required
+                    >
+                </div>
+
+                <div>
+                    <label for="ufRua">UF</label>
+
+                    <input
+                        id="ufRua"
+                        type="text"
+                        placeholder="SP"
+                        maxlength="2"
+                        required
+                    >
+                </div>
+            </div>
+
+            <label for="nomeRua">Nome da rua</label>
+
+            <input
+                id="nomeRua"
+                type="text"
+                placeholder="Ex.: Avenida Brasil"
+                maxlength="150"
+                required
+            >
+
+            <button type="submit" id="botaoRua">
+                Pesquisar endereço
+            </button>
+        </form>
+
+        <div id="statusRuas" class="status" role="status"></div>
+
+        <div id="resultadoRuas" class="grade"></div>
+    </section>
+
+</main>
+
+<footer>
+    <p>
+        Dados: IBGE e OpenStreetMap · Projeto de consulta geográfica
+    </p>
+</footer>
+
+<!-- MODAL DE LOCALIZAÇÃO -->
+<div
+    id="modalMapa"
+    class="modal"
+    aria-hidden="true"
+    inert
+>
+    <div
+        class="modal-conteudo"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tituloModal"
+        aria-describedby="enderecoModal"
+        tabindex="-1"
+    >
+        <div class="modal-cabecalho">
+            <div class="informacoes-modal">
+                <span class="etiqueta-modal">LOCALIZAÇÃO ENCONTRADA</span>
+
+                <h2 id="tituloModal">Localização da rua</h2>
+
+                <p id="enderecoModal"></p>
+            </div>
+
+            <button
+                type="button"
+                id="fecharModal"
+                class="botao-fechar"
+                aria-label="Fechar janela"
+                title="Fechar"
+            >&times;</button>
+        </div>
+
+        <div class="mapa-container">
+            <iframe
+                id="mapaIframe"
+                title="Mapa da localização da rua"
+                src="about:blank"
+                loading="lazy"
+            ></iframe>
+        </div>
+
+        <div class="modal-rodape">
+            <span class="legenda-mapa">
+                <span class="ponto-verde"></span>
+                Mapa fornecido pelo OpenStreetMap
+            </span>
+
+            <a
+                id="abrirMapaCompleto"
+                class="link-mapa-externo"
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                Abrir mapa completo ↗
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+const estadoSelect = document.getElementById('estado');
+const pesquisaMunicipio = document.getElementById('pesquisaMunicipio');
+const municipiosContainer = document.getElementById('municipios');
+const resumo = document.getElementById('resumo');
+
+const formRua = document.getElementById('formRua');
+const cidadeRua = document.getElementById('cidadeRua');
+const ufRua = document.getElementById('ufRua');
+const nomeRua = document.getElementById('nomeRua');
+const statusRuas = document.getElementById('statusRuas');
+const resultadoRuas = document.getElementById('resultadoRuas');
+const botaoRua = document.getElementById('botaoRua');
+
+const modalMapa = document.getElementById('modalMapa');
+const modalConteudo = modalMapa.querySelector('.modal-conteudo');
+const tituloModal = document.getElementById('tituloModal');
+const enderecoModal = document.getElementById('enderecoModal');
+const mapaIframe = document.getElementById('mapaIframe');
+const fecharModal = document.getElementById('fecharModal');
+const abrirMapaCompleto = document.getElementById('abrirMapaCompleto');
+
+let estados = [];
+let municipios = [];
+let elementoAnterior = null;
+
+const siglasPorCodigo = {
+    12: 'AC',
+    27: 'AL',
+    16: 'AP',
+    13: 'AM',
+    29: 'BA',
+    23: 'CE',
+    53: 'DF',
+    32: 'ES',
+    52: 'GO',
+    21: 'MA',
+    51: 'MT',
+    50: 'MS',
+    31: 'MG',
+    15: 'PA',
+    25: 'PB',
+    41: 'PR',
+    26: 'PE',
+    22: 'PI',
+    33: 'RJ',
+    24: 'RN',
+    43: 'RS',
+    11: 'RO',
+    14: 'RR',
+    42: 'SC',
+    35: 'SP',
+    28: 'SE',
+    17: 'TO'
+};
+
+function criarElemento(tag, classe, texto) {
+    const elemento = document.createElement(tag);
+
+    if (classe) {
+        elemento.className = classe;
+    }
+
+    if (texto !== undefined) {
+        elemento.textContent = texto;
+    }
+
+    return elemento;
+}
+
+async function consultar(url) {
+    const resposta = await fetch(url);
+    const dados = await resposta.json();
+
+    if (!resposta.ok) {
+        throw new Error(
+            dados.erro || 'Não foi possível carregar os dados.'
+        );
+    }
+
+    if (!Array.isArray(dados)) {
+        throw new Error(dados.erro || 'Resposta inválida.');
+    }
+
+    return dados;
+}
+
+// CARREGAR ESTADOS
+async function carregarEstados() {
+    try {
+        estados = await consultar('api.php');
+
+        estadoSelect.replaceChildren();
+
+        const inicial = criarElemento(
+            'option',
+            '',
+            'Selecione um estado...'
+        );
+
+        inicial.value = '';
+        estadoSelect.appendChild(inicial);
+
+        estados.forEach(estado => {
+            const opcao = criarElemento(
+                'option',
+                '',
+                `${estado.nome} (${estado.sigla})`
+            );
+
+            opcao.value = estado.id;
+            estadoSelect.appendChild(opcao);
+        });
+
+        resumo.textContent =
+            `${estados.length} unidades federativas disponíveis.`;
+
+    } catch (erro) {
+        resumo.textContent = erro.message;
+    }
+}
+
+// CARREGAR MUNICÍPIOS
+async function carregarMunicipios() {
+    const codigo = estadoSelect.value;
+
+    municipios = [];
+    municipiosContainer.replaceChildren();
+
+    pesquisaMunicipio.value = '';
+    pesquisaMunicipio.disabled = true;
+
+    if (!codigo) {
+        resumo.textContent = 'Selecione um estado para continuar.';
+        return;
+    }
+
+    resumo.textContent = 'Carregando municípios...';
+
+    try {
+        municipios = await consultar(
+            `api.php?estado=${encodeURIComponent(codigo)}`
+        );
+
+        pesquisaMunicipio.disabled = false;
+
+        exibirMunicipios();
+
+        const estado = estados.find(
+            item => String(item.id) === codigo
+        );
+
+        if (estado) {
+            ufRua.value = estado.sigla;
+        }
+
+    } catch (erro) {
+        resumo.textContent = erro.message;
+    }
+}
+
+// EXIBIR MUNICÍPIOS
+function exibirMunicipios() {
+    const termo = pesquisaMunicipio.value
+        .trim()
+        .toLocaleLowerCase('pt-BR');
+
+    const filtrados = municipios.filter(municipio =>
+        municipio.nome
+            .toLocaleLowerCase('pt-BR')
+            .includes(termo)
+    );
+
+    municipiosContainer.replaceChildren();
+
+    resumo.textContent =
+        `${filtrados.length} de ${municipios.length} municípios encontrados.`;
+
+    filtrados.forEach(municipio => {
+        const cartao = criarElemento('article', 'cartao');
+
+        const nome = criarElemento(
+            'h3',
+            '',
+            municipio.nome
+        );
+
+        const codigo = criarElemento(
+            'p',
+            'texto-secundario',
+            `Código IBGE: ${municipio.id}`
+        );
+
+        const botao = criarElemento(
+            'button',
+            'botao-secundario',
+            'Pesquisar ruas'
+        );
+
+        botao.type = 'button';
+
+        botao.addEventListener('click', () => {
+            const estado = estados.find(
+                item => String(item.id) === estadoSelect.value
+            );
+
+            cidadeRua.value = municipio.nome;
+            ufRua.value = estado?.sigla || '';
+
+            nomeRua.focus();
+
+            formRua.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        });
+
+        cartao.append(nome, codigo, botao);
+
+        municipiosContainer.appendChild(cartao);
+    });
+}
+
+// ABRIR MODAL DO MAPA
+function abrirModalMapa(item) {
+    const latitude = Number(item.lat);
+    const longitude = Number(item.lon);
+
+    if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180
+    ) {
+        statusRuas.textContent =
+            'Não foi possível abrir o mapa: coordenadas inválidas.';
+        return;
+    }
+
+    elementoAnterior = document.activeElement;
+
+    tituloModal.textContent =
+        item.name || 'Localização da rua';
+
+    enderecoModal.textContent =
+        item.display_name || 'Endereço encontrado no mapa.';
+
+    const parametrosMapa = new URLSearchParams({
+        bbox: [
+            longitude - 0.005,
+            latitude - 0.005,
+            longitude + 0.005,
+            latitude + 0.005
+        ].join(','),
+        marker: `${latitude},${longitude}`,
+        layer: 'mapnik'
+    });
+
+    mapaIframe.src =
+        'https://www.openstreetmap.org/export/embed.html?' +
+        parametrosMapa.toString();
+
+    abrirMapaCompleto.href =
+        `https://www.openstreetmap.org/?mlat=${latitude}` +
+        `&mlon=${longitude}#map=17/${latitude}/${longitude}`;
+
+    modalMapa.inert = false;
+    modalMapa.classList.add('aberto');
+    modalMapa.setAttribute('aria-hidden', 'false');
+
+    document.body.classList.add('modal-aberto');
+
+    fecharModal.focus();
+}
+
+// FECHAR MODAL
+function fecharModalMapa() {
+    if (!modalMapa.classList.contains('aberto')) {
+        return;
+    }
+
+    modalMapa.classList.remove('aberto');
+    modalMapa.setAttribute('aria-hidden', 'true');
+    modalMapa.inert = true;
+
+    document.body.classList.remove('modal-aberto');
+
+    // Libera o recurso do mapa enquanto o modal está fechado.
+    mapaIframe.src = 'about:blank';
+
+    if (
+        elementoAnterior &&
+        elementoAnterior.isConnected
+    ) {
+        elementoAnterior.focus();
+    }
+
+    elementoAnterior = null;
+}
+
+fecharModal.addEventListener('click', fecharModalMapa);
+
+// FECHAR AO CLICAR NO FUNDO
+modalMapa.addEventListener('click', evento => {
+    if (evento.target === modalMapa) {
+        fecharModalMapa();
+    }
+});
+
+// FECHAR COM ESC
+document.addEventListener('keydown', evento => {
+    if (
+        evento.key === 'Escape' &&
+        modalMapa.classList.contains('aberto')
+    ) {
+        fecharModalMapa();
+    }
+});
+
+// EVITAR QUE O CLIQUE NO CONTEÚDO FECHE O MODAL
+modalConteudo.addEventListener('click', evento => {
+    evento.stopPropagation();
+});
+
+// PESQUISAR RUAS
+formRua.addEventListener('submit', async evento => {
+    evento.preventDefault();
+
+    const cidade = cidadeRua.value.trim();
+    const uf = ufRua.value.trim().toUpperCase();
+    const rua = nomeRua.value.trim();
+
+    if (!cidade || !uf || !rua) {
+        statusRuas.textContent =
+            'Preencha o município, a UF e o nome da rua.';
+        return;
+    }
+
+    if (!/^[A-Z]{2}$/.test(uf)) {
+        statusRuas.textContent =
+            'Informe uma UF válida com duas letras.';
+        return;
+    }
+
+    resultadoRuas.replaceChildren();
+
+    statusRuas.textContent = 'Pesquisando endereços...';
+
+    botaoRua.disabled = true;
+
+    try {
+        const parametros = new URLSearchParams({
+            cidade,
+            uf,
+            rua
+        });
+
+        const dados = await consultar(
+            `api.php?${parametros.toString()}`
+        );
+
+        if (dados.length === 0) {
+            statusRuas.textContent =
+                'Nenhum resultado encontrado. Tente outro nome de rua.';
+            return;
+        }
+
+        statusRuas.textContent =
+            `${dados.length} resultado(s) encontrado(s).`;
+
+        dados.forEach(item => {
+            const cartao = criarElemento('article', 'cartao');
+
+            const nome = criarElemento(
+                'h3',
+                '',
+                item.name || 'Endereço encontrado'
+            );
+
+            const endereco = criarElemento(
+                'p',
+                'texto-secundario',
+                item.display_name || 'Endereço não informado.'
+            );
+
+            cartao.append(nome, endereco);
+
+            if (item.lat && item.lon) {
+                const botaoMapa = criarElemento(
+                    'button',
+                    'botao-mapa',
+                    'Ver localização no mapa'
+                );
+
+                botaoMapa.type = 'button';
+
+                botaoMapa.addEventListener('click', () => {
+                    abrirModalMapa(item);
+                });
+
+                cartao.appendChild(botaoMapa);
+            }
+
+            resultadoRuas.appendChild(cartao);
+        });
+
+    } catch (erro) {
+        statusRuas.textContent =
+            erro.message || 'Erro ao pesquisar ruas.';
+
+    } finally {
+        botaoRua.disabled = false;
+    }
+});
+
+// EVENTOS
+estadoSelect.addEventListener('change', carregarMunicipios);
+
+pesquisaMunicipio.addEventListener('input', exibirMunicipios);
+
+// INICIAR A PÁGINA
+carregarEstados();
+</script>
+
+</body>
+</html>
